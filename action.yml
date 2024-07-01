@@ -1,39 +1,45 @@
 name: 'Update ECR and File Action'  
 description: 'Updates a tag in ECR and updates a file in another repository'  
 inputs:  
-  file-path:  
-    description: 'Path to the file to update'  
+  environment:  
+    description: 'Environment'  
     required: true  
-  tag-name:  
+  target-tag:  
     description: 'Tag name to update in ECR'  
-    required: true  
-  ecr-repository:  
-    description: 'ECR repository name'  
-    required: true  
+    required: true    
   target-repo:  
     description: 'Target repository where the file should be updated'  
-    required: true  
-  github-token:  
-    description: 'GitHub Token'  
-    required: true  
+    required: true     
   target-sha:  
     description: 'ECR image sha'  
-    required: true    
+    required: true   
+  user-pat:  
+    description: 'User pat'  
+    required: true   
+  aws-access-key-id:   
+    description: 'aws access key id'  
+    required: true   
+  aws-secret-access-key:  
+    description: 'aws secret access key'  
+    required: true   
+  aws-region:  
+    description: 'aws region'  
+    required: true   
 runs:  
   using: 'composite'  
   steps:  
     - name: Set up AWS CLI
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
         aws-region: eu-central-1
     - name: Re-tag the image to release tag
       id: tag
-      run: |
-        TARGET_TAG=${GITHUB_REF#refs/tags/}
-        TARGET_SHA="sha-${GITHUB_SHA:0:7}"
-        TARGET_REPO="$(echo ${{ github.event.release.tag_name }} | sed 's/-[^-]*$//')"
+      run: |        
+        TARGET_TAG=${inputs.taget-tag}
+        TARGET_SHA=${inputs.target-sha}
+        TARGET_REPO=${inputs.target-repo}
 
         echo "TARGET_TAG: ${TARGET_TAG}"
         echo "TARGET_SHA: ${TARGET_SHA}"
@@ -48,7 +54,7 @@ runs:
 
         if [ -z "$MANIFEST" ]; then
           echo "Image with tag $TARGET_SHA not found in ECR."
-          echo "The image for release tag ${{ github.event.release.tag_name }} does not exist. Please ensure the target version is built and available in ECR before releasing."
+          echo "The image for release tag ${TARGET_TAG} does not exist. Please ensure the target version is built and available in ECR before releasing."
           exit 1
         else
           echo "Image with tag $TARGET_SHA found. Proceeding to retag."
@@ -62,7 +68,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: 'hooloovoodoo/peacock-peafowl'
-        token: ${{ secrets.USER_PAT }}
+        token: ${inputs.user-pat}
         path: 'peacock-peafowl'
         fetch-depth: 0
 
@@ -70,7 +76,7 @@ runs:
       run: |
         TARGET_TAG=${{ steps.tag.outputs.target_tag }}
         SERVICE="$(echo ${TARGET_TAG} | sed 's/-/_/g; s/_\([0-9]\+\.\)\+.*$//')"
-        CONFIG="infra/clusters/sandbox-cluster/config-maps/env-configmap.yaml"
+        CONFIG="infra/clusters/${inputs.environment}-cluster/config-maps/env-configmap.yaml"
         sed -i "s/  \(${SERVICE}_tag: \"\)[^\"]*/  \1$TARGET_TAG/" "${CONFIG}"
         git config user.name github-actions
         git config user.email github-actions@github.com
