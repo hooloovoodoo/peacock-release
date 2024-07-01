@@ -1,0 +1,81 @@
+name: 'Update ECR and File Action'  
+description: 'Updates a tag in ECR and updates a file in another repository'  
+inputs:  
+  file-path:  
+    description: 'Path to the file to update'  
+    required: true  
+  tag-name:  
+    description: 'Tag name to update in ECR'  
+    required: true  
+  ecr-repository:  
+    description: 'ECR repository name'  
+    required: true  
+  target-repo:  
+    description: 'Target repository where the file should be updated'  
+    required: true  
+  github-token:  
+    description: 'GitHub Token'  
+    required: true  
+  target-sha:  
+    description: 'ECR image sha'  
+    required: true    
+runs:  
+  using: 'composite'  
+  steps:  
+    - name: Set up AWS CLI
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-central-1
+    - name: Re-tag the image to release tag
+      id: tag
+      run: |
+        TARGET_TAG=${GITHUB_REF#refs/tags/}
+        TARGET_SHA="sha-${GITHUB_SHA:0:7}"
+        TARGET_REPO="$(echo ${{ github.event.release.tag_name }} | sed 's/-[^-]*$//')"
+
+        echo "TARGET_TAG: ${TARGET_TAG}"
+        echo "TARGET_SHA: ${TARGET_SHA}"
+        echo "TARGET_REPO: ${TARGET_REPO}"
+        # Check if the variable value is 'merchant-api'  
+        if [ "$TARGET_REPO" == "merchant-api" ]; then                
+          TARGET_REPO="${TARGET_REPO}-doc"
+        fi  
+        
+
+        MANIFEST=$(aws ecr batch-get-image --repository-name ${TARGET_REPO} --image-ids imageTag=$TARGET_SHA --query 'images[].imageManifest' --output text)
+
+        if [ -z "$MANIFEST" ]; then
+          echo "Image with tag $TARGET_SHA not found in ECR."
+          echo "The image for release tag ${{ github.event.release.tag_name }} does not exist. Please ensure the target version is built and available in ECR before releasing."
+          exit 1
+        else
+          echo "Image with tag $TARGET_SHA found. Proceeding to retag."
+          aws ecr put-image --repository-name ${TARGET_REPO} --image-tag $TARGET_TAG --image-manifest "$MANIFEST"
+        fi
+
+        echo "target_tag=${TARGET_TAG}" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Checkout peafowl repo
+      uses: actions/checkout@v4
+      with:
+        repository: 'hooloovoodoo/peacock-peafowl'
+        token: ${{ secrets.USER_PAT }}
+        path: 'peacock-peafowl'
+        fetch-depth: 0
+
+    - name: Update CM
+      run: |
+        TARGET_TAG=${{ steps.tag.outputs.target_tag }}
+        SERVICE="$(echo ${TARGET_TAG} | sed 's/-/_/g; s/_\([0-9]\+\.\)\+.*$//')"
+        CONFIG="infra/clusters/sandbox-cluster/config-maps/env-configmap.yaml"
+        sed -i "s/  \(${SERVICE}_tag: \"\)[^\"]*/  \1$TARGET_TAG/" "${CONFIG}"
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add ${CONFIG}
+        git commit -m "Update config-map with new tag (${SERVICE}: ${TARGET_TAG})"
+        git push origin main
+      working-directory: peacock-peafowl
+      shell: bash
