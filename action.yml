@@ -52,7 +52,7 @@ runs:
 
         MANIFEST=$(aws ecr batch-get-image --repository-name ${TARGET_REPO} --image-ids imageTag=$TARGET_SHA --query 'images[].imageManifest' --output text)
 
-        if [ -z "$MANIFEST" ] || [ "${{ inputs.environment }}" != "prod" ]; then
+        if [ -z "$MANIFEST" ] && [ "${{ inputs.environment }}" != "prod" ]; then
           echo "Image with tag $TARGET_SHA not found in ECR."
           echo "The image for release tag ${TARGET_TAG} does not exist. Please ensure the target version is built and available in ECR before releasing."
           exit 1
