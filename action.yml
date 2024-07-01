@@ -37,7 +37,7 @@ runs:
     - name: Re-tag the image to release tag
       id: tag
       run: |        
-        TARGET_TAG=${inputs.taget-tag}
+        TARGET_TAG=${inputs.target-tag}
         TARGET_SHA=${inputs.target-sha}
         TARGET_REPO=${inputs.target-repo}
 
