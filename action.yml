@@ -37,9 +37,9 @@ runs:
     - name: Re-tag the image to release tag
       id: tag
       run: |        
-        TARGET_TAG=${inputs.target-tag}
-        TARGET_SHA=${inputs.target-sha}
-        TARGET_REPO=${inputs.target-repo}
+        TARGET_TAG=${{ inputs.target-tag }}
+        TARGET_SHA=${{ inputs.target-sha }}
+        TARGET_REPO=${{ inputs.target-repo }}
 
         echo "TARGET_TAG: ${TARGET_TAG}"
         echo "TARGET_SHA: ${TARGET_SHA}"
@@ -52,7 +52,7 @@ runs:
 
         MANIFEST=$(aws ecr batch-get-image --repository-name ${TARGET_REPO} --image-ids imageTag=$TARGET_SHA --query 'images[].imageManifest' --output text)
 
-        if [ -z "$MANIFEST" ] || [ "$inputs.environment" != "prod" ]; then
+        if [ -z "$MANIFEST" ] || [ "${{ inputs.environment }}" != "prod" ]; then
           echo "Image with tag $TARGET_SHA not found in ECR."
           echo "The image for release tag ${TARGET_TAG} does not exist. Please ensure the target version is built and available in ECR before releasing."
           exit 1
@@ -68,7 +68,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: 'hooloovoodoo/peacock-peafowl'
-        token: ${inputs.user-pat}
+        token: ${{ inputs.user-pat }}
         path: 'peacock-peafowl'
         fetch-depth: 0
 
@@ -76,7 +76,7 @@ runs:
       run: |
         TARGET_TAG=${{ steps.tag.outputs.target_tag }}
         SERVICE="$(echo ${TARGET_TAG} | sed 's/-/_/g; s/_\([0-9]\+\.\)\+.*$//')"
-        CONFIG="infra/clusters/${inputs.environment}-cluster/config-maps/env-configmap.yaml"
+        CONFIG="infra/clusters/${{ inputs.environment }}-cluster/config-maps/env-configmap.yaml"
         sed -i "s/  \(${SERVICE}_tag: \"\)[^\"]*/  \1$TARGET_TAG/" "${CONFIG}"
         git config user.name github-actions
         git config user.email github-actions@github.com
